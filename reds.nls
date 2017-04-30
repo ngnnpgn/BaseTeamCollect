@@ -1,0 +1,343 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; le code de l'equipe rouge basique
+;; préfixe : bteam
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;------------------------------------------------------------------------------------------------------------------------
+to bteam-ask-for-energy [ b n ]
+  ask b [ if (energy > 6000) [ give-energy myself n ]]
+end
+;;-------------------------------------------------------------------------------------------------------------------
+to bteam-go-back-to-base
+  if (carrying-food? > 1000) or (energy < 500) or ((Breed = RocketLaunchers) and (nb-missiles = 0))
+  [
+    let b min-one-of my-bases [ distance myself ]
+    ifelse (distance b <= 2)
+    [ 
+      if (carrying-food? > 1000) [ give-food b carrying-food? ]
+      if (energy < 500) [ bteam-ask-for-energy b 500 ]
+      if ((Breed = RocketLaunchers) and (nb-missiles = 0)) [
+        bteam-ask-for-energy b 500
+        new-missile 5
+      ]
+    ]
+    [
+      set heading towards b - 20 + random 40
+      if count turtles in-cone 2 90 with [ (breed != Burgers) and (breed != Perceptions) ] != 1 [ rt random 90 ]
+      forward-move speed
+    ]
+  ]
+end
+;;--------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-go-and-eat
+  if ((breed = RocketLaunchers and (mem5 = 0)) or (breed = Explorers)) [
+    random-move
+  ]
+end
+;;--------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-harvesters-go-and-eat
+  
+  let b min-one-of perceive-food [ distance self ]
+  
+  ifelse (b != nobody) [ 
+    ifelse (distance b) <= 2
+      [ take b ]
+      [ set heading towards b - 20 + random 40
+        if count turtles in-cone 2 90 with [ (breed != Burgers) and (breed != Perceptions) ] != 1 [ rt random 90 ]
+        forward-move speed
+      ]
+  ]
+  [ random-move 
+    ]
+end
+;;----------------------------------------------------------------------------------------------------------------------------------------
+to-report bteam-no-target?
+  report mem5 = 0
+end
+;;----------------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-set-target [ x y espece ]
+  set mem0 x set mem1 y set mem2 espece set mem5 1
+end
+;;----------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-call-rocket-launcher [ x y espece ]
+  let rl min-one-of perceive color RocketLaunchers [ distancexy x y ]
+  if (rl != nobody) [ ask rl [ ngankam-set-target x y espece ]]
+end
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-call-explorer [ x y espece ]
+  let ex one-of perceive color Explorers
+  if (ex != nobody) [
+    ask ex [
+      set mem0 x 
+      set mem1 y
+      set mem2 espece
+      set mem5 1
+    ]
+  ]
+end
+;;------------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-select-target
+  if (bteam-no-target?)
+  [
+    let h min-one-of perceive-robots ennemy [ distance myself ]
+    ifelse ( h != nobody ) [
+      set mem0 [xcor] of h
+      set mem1 [ycor] of h
+      set mem2 [breed] of h
+      set mem5 1
+    ]
+    [ set mem5 0 ]
+  ]
+end
+;;-------------------------------------------------------------------------------------------------------------------------------------------------------
+to bteam-shoot 
+  if (not bteam-no-target?) 
+  [
+    ifelse (distancexy mem0 mem1 < detection-range)
+    [ launch-rocket towardsxy mem0 mem1 set mem5 0]
+    [ set heading towardsxy mem0 mem1 - 20 + random 40
+      if count turtles in-cone 2 90 with [ (breed != Burgers) and (breed != Perceptions) ] != 1 [ rt random 90 ]
+      forward-move speed
+    ]
+  ]
+  
+end
+;;----------------------------------------------------------------------------------------------------------------------------------------------
+to goRedExplorer
+  ;; 
+  ngankam-go-back-to-base
+  bteam-go-and-eat
+  
+  let a1 min-one-of perceive-food [ distance self ]
+  if (a1 != nobody)[
+    
+    ifelse mem3 = 0 and mem4 = 0 [
+    set mem3 [xcor] of a1
+    set mem4 [ycor] of a1 ]
+    [
+     ]
+   ]
+  ;; look ennemy
+  let h one-of perceive-robots ennemy
+  ifelse (mem5 = 1) [ ;; cible trouver
+    bteam-call-rocket-launcher mem0 mem1 mem2
+  ;;  bteam-call-explorer mem0 mem1 mem2
+  ]
+  [ 
+    if ( h != nobody ) [
+      ifelse [breed] of h = Bases [
+        
+         let var 0
+         ask h [
+           set var energy
+           ]
+         set mem5 2
+         steal-energy h var  ;; si trop proche on essaie de voler son energie
+         bteam-call-rocket-launcher[xcor] of h [ycor] of h [breed] of h
+         
+        ]
+      [
+           bteam-call-rocket-launcher[xcor] of h [ycor] of h [breed] of h
+          ;; bteam-call-explorer [xcor] of h [ycor] of h [breed] of h 
+      ]
+    ]
+    
+ 
+  ]
+    
+end
+
+to goRedRocketLauncher
+  ngankam-go-back-to-base
+  ngankam-select-target
+  ngankam-shoot
+  bteam-go-and-eat
+
+  if ((energy > 3000) and (nb-missiles < 5)) [ new-missile 1 ]
+end
+
+to goRedHarvester
+  ;; rentre à la base si certaines conditions sont vérifiées
+  ngankam-go-back-to-base
+  ;; cherche à manger
+  ngankam-harvesters-go-and-eat
+end
+;;-----------------------------------------------------------------------------------------------------------------------------
+to goRedBase
+  set label energy
+ 
+;;  if (energy  24000) [ new-RocketLauncher 1 self ]
+
+  let t one-of perceive-specific-robots ennemy rocketlaunchers
+  
+  ifelse (t != nobody) [
+    ;; lance rocket ----------------------------------
+       launch-rocket towards t
+    
+    ;; si la base n'a pas suffsament d'energie--------------------------------------------
+       if (energy < 3000) [
+        let a1 one-of perceive-robots color
+        if( (a1 != nobody) and (500 < [energy] of a1) )[
+             bteam-ask-for-energy a1 500 ;; teste l'agent et si il est tres proche je recupere son energie 
+        ]
+        
+       ]
+       let a2 one-of perceive-robots ennemy
+        if(a2 != nobody)[
+        steal-energy a2 500 ] ;; vole l'energie
+   ] [
+  ;; si je n'ai pas d'ennemi pres de moi, alors je cree un lanceur de rocket si mon energie est sup a 24000
+       if (energy > 24000 and count turtles with [breed = RocketLaunchers] < 50 ) [ new-RocketLauncher 1 self ]
+       if (energy > 24000 and count turtles with [breed = Harvesters] < 50 ) [ new-Harvester 1 self ]
+       if (energy > 100000 and count turtles with [breed = Explorers] < 50 ) [ new-Explorer 1 self ]
+  ]
+  
+end
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+;; procedure pour initialiser les explorers rouges
+to initRedExplorer
+  
+         set xcor random-xcor
+         set ycor random-ycor
+end
+
+;; procedure pour initialiser les rocket-launchers rouges
+to initRedRocketLauncher
+  
+         set xcor random-xcor 
+         set ycor random-ycor
+end
+
+;; procedure pour initialiser les rocket-launchers rouges
+to initRedHarvester
+  
+      
+         set xcor random-xcor
+         set ycor random-ycor
+      
+end
+
+;; procedure pour initialiser les bases rouges
+to initRedBase
+  
+  new-RocketLauncher 1 self
+  new-Harvester 11 self
+  new-Explorer 6 self
+ ;new-Harvester 7 self
+  
+  
+end
+
+to ngankam-harvesters-go-and-eat
+  
+  let b min-one-of perceive-food [ distance self ]
+  ifelse (b != nobody) [ 
+    ifelse (distance b) <= 2
+      [ take b ]
+      [ set heading towards b - 20 + random 40
+        if count turtles in-cone 2 90 with [ (breed != Burgers) and (breed != Perceptions) ] != 1 [ rt random 90 ]
+        forward-move speed
+      ]
+  ]
+  [ ;; random-move  si pas de voisin burgers , checker en memoire pr savoir si un explorateur a trouver un burgers
+    ifelse mem3 != 0 or mem4 != 0
+    [ 
+      set heading towardsxy mem3 mem4
+      forward-move speed
+      if distancexy mem3 mem4 <= 2[
+      set mem3 0
+      set mem4 0
+      ]
+      ][  
+      ;; j recuperai la nourriture de l'ennemi
+          let t min-one-of perceive-robots ennemy [ distance myself ]
+           if t != nobody [ 
+             ask t [ give-food myself [carrying-food?] of t ]
+            ]
+           ;; je recupere celui de mon partenaire afin d'atteindre 5000 foods et de rentrer a la bases rapidement
+           let t1 min-one-of perceive-robots color [ distance myself ]
+           if t1 != nobody [
+             ask t1 [ give-food myself [carrying-food?] of t1 ]
+           ]
+          random-move
+      ]
+    
+  ]
+end
+
+to steal-energy [ b n ]
+  ask b [ if (energy > 500) [ give-energy myself n ]]
+end
+
+;;----------------------------------------------------------------------------------------------------------
+to ngankam-go-back-to-base
+  if (carrying-food? > 5000) or (energy < 500) or ((Breed = RocketLaunchers) and (nb-missiles = 0))
+  [
+    let b min-one-of my-bases [ distance myself ]
+    ifelse (distance b <= 2)
+    [ 
+      if (carrying-food? > 5000) [ give-food b carrying-food? ]
+      if (energy < 500) [ bteam-ask-for-energy b 500 ]
+      if ((Breed = RocketLaunchers) and (nb-missiles = 0)) [
+        bteam-ask-for-energy b 500
+        new-missile 5
+      ]
+    ]
+    [
+      set heading towards b - 20 + random 40
+      if count turtles in-cone 2 90 with [ (breed != Burgers) and (breed != Perceptions) ] != 1 [ rt random 90 ]
+      forward-move speed
+      
+    ]
+  ]
+end
+;;-------------------------------------------------------------------------------------------------
+
+to ngankam-select-target
+  if (bteam-no-target?)
+  [
+    let h min-one-of perceive-robots ennemy [ distance myself ]
+    ifelse ( h != nobody ) [
+      ifelse [breed] of h = Bases [
+        set mem0 [xcor] of h
+        set mem1 [ycor] of h
+        set mem2 [breed] of h
+        set mem5 2 ][
+        
+        set mem0 [xcor] of h
+        set mem1 [ycor] of h
+        set mem2 [breed] of h
+        set mem5 1
+        ]
+        ]
+    [ set mem5 0 ]
+  ]
+end
+;;--------------------------------------------------------------------------
+
+to ngankam-set-target [ x y espece ]
+  ifelse espece =  Bases[
+   set mem0 x set mem1 y set mem2 espece set mem5 2 ][
+   set mem0 x set mem1 y set mem2 espece set mem5 1]
+end
+;;------------------------------------------------------------------------------
+
+to ngankam-shoot 
+  if (not bteam-no-target?) 
+  [
+    ifelse (distancexy mem0 mem1 < detection-range)
+    [ ifelse mem5 = 2 [
+        launch-rocket towardsxy mem0 mem1 set mem5 2  ;;base trouvé ,on tire mais on maintient la position de la bases ennemie
+        ][
+        launch-rocket towardsxy mem0 mem1 set mem5 0
+        ]
+    ]
+    [ set heading towardsxy mem0 mem1 - 20 + random 40
+      if count turtles in-cone 2 90 with [ (breed != Burgers) and (breed != Perceptions) ] != 1 [ rt random 90 ]
+      forward-move speed
+    ]
+  ]
+  
+end
